@@ -21,7 +21,6 @@ function register() {
 
 socket.on("connect", () => {
     console.log("connected:", socket.id);
-
     register();
 });
 
@@ -31,7 +30,6 @@ socket.on("disconnect", (reason) => {
 
 socket.io.on("reconnect", (attempt) => {
     console.log("reconnected:", attempt);
-
     register();
 });
 
@@ -42,6 +40,10 @@ socket.io.on("reconnect_attempt", () => {
 socket.io.on("reconnect_error", (err) => {
     console.error("reconnect error:", err.message);
 });
+
+setInterval(() => {
+    socket.emit("printer-ping");
+}, 10000);
 
 socket.on("print-order", async (payload) => {
     if (payload.id !== socket.id) return;
