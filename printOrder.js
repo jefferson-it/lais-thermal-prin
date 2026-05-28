@@ -50,7 +50,7 @@ const section = (title, lines) => {
         "",
         title.toUpperCase(),
         line(),
-        ...lines.map(l => sanitizeText(l))
+        ...lines // Removido o sanitizeText daqui pois os helpers individuais já o fazem, evitando quebrar o alinhamento do columns()
     ].join("\r\n");
 };
 
@@ -72,6 +72,7 @@ export async function printOrder(data) {
             payType,
             returnTo,
             clientLoad,
+            operatorLoad, // <--- Recebendo o operador aqui
             observation,
             addressLoad,
             order
@@ -88,7 +89,6 @@ export async function printOrder(data) {
         output.push("\x1b\x40"); // Inicializa/limpa a impressora
 
         // Altera a tabela de caracteres interna da impressora para PC860 (Português) ou West Europe
-        // Se ainda sumir texto, altere o último byte para \x02 (PC850) ou \x03 (PC860)
         output.push("\x1b\x74\x03");
 
         /*
@@ -120,16 +120,16 @@ export async function printOrder(data) {
             const total = amount * price;
             subtotal += total;
 
-            productLines.push(`${amount}x ${item.name}`);
+            productLines.push(sanitizeText(`${amount}x ${item.name}`));
 
             if (item.codeRef) {
-                productLines.push(`Cod: ${item.codeRef}`);
+                productLines.push(sanitizeText(`Cod: ${item.codeRef}`));
             }
 
             productLines.push(money(total));
 
             if (item.obs) {
-                productLines.push(`Obs: ${item.obs}`);
+                productLines.push(sanitizeText(`Obs: ${item.obs}`));
             }
 
             productLines.push("");
@@ -152,7 +152,7 @@ export async function printOrder(data) {
         paymentLines.push(columns("TOTAL", money(total)));
 
         if (payType) {
-            paymentLines.push(`Pagamento: ${payType}`);
+            paymentLines.push(sanitizeText(`Pagamento: ${payType}`));
         }
 
         if (payType === "Dinheiro" && returnTo) {
@@ -163,19 +163,27 @@ export async function printOrder(data) {
 
         /*
          |--------------------------------------------------------------------------
-         | CLIENTE
+         | CLIENTE / ATENDENTE
          |--------------------------------------------------------------------------
          */
-        if (clientLoad) {
+        if (clientLoad || operatorLoad) {
             const clientLines = [];
-            clientLines.push(`Nome: ${clientLoad?.name || "Nao informado"}`);
 
-            if (clientLoad?.tel) {
-                clientLines.push(`Telefone: ${clientLoad.tel}`);
+            if (clientLoad) {
+                clientLines.push(sanitizeText(`Nome: ${clientLoad?.name || "Nao informado"}`));
+
+                if (clientLoad?.tel) {
+                    clientLines.push(sanitizeText(`Telefone: ${clientLoad.tel}`));
+                }
+            }
+
+            // Adiciona a linha do atendente caso o operatorLoad exista
+            if (operatorLoad?.name) {
+                clientLines.push(sanitizeText(`Atendente: ${operatorLoad.name}`));
             }
 
             if (observation) {
-                clientLines.push(`Obs: ${observation}`);
+                clientLines.push(sanitizeText(`Obs: ${observation}`));
             }
 
             output.push(section("Cliente", clientLines));
@@ -188,14 +196,14 @@ export async function printOrder(data) {
          */
         if (withdraw === "Entrega" && addressLoad) {
             const addressLines = [];
-            addressLines.push(`${addressLoad?.road || ""}, ${addressLoad?.number || ""}`);
+            addressLines.push(sanitizeText(`${addressLoad?.road || ""}, ${addressLoad?.number || ""}`));
 
             if (addressLoad?.complement) {
-                addressLines.push(addressLoad.complement);
+                addressLines.push(sanitizeText(addressLoad.complement));
             }
 
-            addressLines.push(`${addressLoad?.neighborhood || ""}`);
-            addressLines.push(`${addressLoad?.city || ""}`);
+            addressLines.push(sanitizeText(`${addressLoad?.neighborhood || ""}`));
+            addressLines.push(sanitizeText(`${addressLoad?.city || ""}`));
 
             output.push(section("Endereco", addressLines));
         }
@@ -229,6 +237,22 @@ export async function printOrder(data) {
 
         const command = `cmd.exe /c copy /b "${filePath}" "\\\\127.0.0.1\\${printerName}"`;
         await execAsync(command);
+
+        try {
+            // Coloque o caminho completo ou relativo do seu arquivo de som (Ex: .wav ou .mp3)
+            const audioPath = path.resolve("./new-order.mp3");
+
+            // Comando PowerShell para reproduzir o áudio em segundo plano
+            const soundCommand = `powershell -c "(New-Object Media.SoundPlayer '${audioPath}').PlaySync()"`;
+
+            // Se for usar um arquivo .mp3 (o SoundPlayer nativo acima prefere .wav), use este comando alternativo comentando o de cima:
+            // const soundCommand = `powershell -c "$m = New-Object -ComObject MediaPlayer.MediaPlayer; $m.Open('${audioPath}'); Start-Sleep 2"`;
+
+            await execAsync(soundCommand);
+        } catch (soundErr) {
+            // Evita que um erro no som trave o retorno de sucesso da impressão
+            console.log("Erro ao reproduzir o som:", soundErr.message);
+        }
 
         console.log(`[PRINTED] Pedido #${num}`);
         return true;
