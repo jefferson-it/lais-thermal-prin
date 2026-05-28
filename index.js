@@ -60,10 +60,11 @@ socket.on("print-order", async (payload) => {
     if (payload.id !== socket.id) return;
 
     try {
-        await printOrder(payload.order);
+        await printOrder(payload.order, socket);
 
         socket.emit("order-printed", {
-            orderId: payload.order.id
+            orderId: payload.order.id,
+            clientId: payload.clientId
         });
     } catch (err) {
         console.error(err);
