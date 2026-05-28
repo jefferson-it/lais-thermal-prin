@@ -2,6 +2,8 @@ import { config } from "dotenv";
 import { io } from "socket.io-client";
 import { printOrder } from "./printOrder.js";
 import { promisify } from "util";
+import { exec } from "child_process";
+import path from "path";
 
 config();
 const execAsync = promisify(exec);
