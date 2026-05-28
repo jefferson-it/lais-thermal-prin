@@ -239,19 +239,17 @@ export async function printOrder(data) {
         await execAsync(command);
 
         try {
-            // Coloque o caminho completo ou relativo do seu arquivo de som (Ex: .wav ou .mp3)
+            // Caminho absoluto para o seu arquivo mp3
             const audioPath = path.resolve("./new-order.mp3");
 
-            // Comando PowerShell para reproduzir o áudio em segundo plano
-            const soundCommand = `powershell -c "(New-Object Media.SoundPlayer '${audioPath}').PlaySync()"`;
+            // Comando PowerShell robusto para tocar MP3 em segundo plano sem travar o terminal
+            const soundCommand = `powershell -WindowStyle Hidden -Command "$player = New-Object -ComObject MediaPlayer.MediaPlayer; $player.Open('${audioPath}'); Start-Sleep -s 3"`;
 
-            // Se for usar um arquivo .mp3 (o SoundPlayer nativo acima prefere .wav), use este comando alternativo comentando o de cima:
-            // const soundCommand = `powershell -c "$m = New-Object -ComObject MediaPlayer.MediaPlayer; $m.Open('${audioPath}'); Start-Sleep 2"`;
+            // Executa o som sem dar "await" para não segurar a API/Impressão enquanto o som toca
+            execAsync(soundCommand).catch(e => console.log("Erro assíncrono no som:", e.message));
 
-            await execAsync(soundCommand);
         } catch (soundErr) {
-            // Evita que um erro no som trave o retorno de sucesso da impressão
-            console.log("Erro ao reproduzir o som:", soundErr.message);
+            console.log("Erro ao inicializar o som:", soundErr.message);
         }
 
         console.log(`[PRINTED] Pedido #${num}`);
