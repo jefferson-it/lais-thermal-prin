@@ -1,8 +1,10 @@
 import { config } from "dotenv";
 import { io } from "socket.io-client";
 import { printOrder } from "./printOrder.js";
+import { promisify } from "util";
 
 config();
+const execAsync = promisify(exec);
 
 const socket = io(process.env.URI, {
     reconnection: true,
@@ -27,6 +29,23 @@ socket.on("connect", () => {
 socket.on("disconnect", (reason) => {
     console.log("disconnect:", reason);
 });
+
+socket.on('test-alarm', () => {
+    console.log('Received test-alarm event');
+
+    try {
+        const audioPath = path.resolve("./new-order.mp3");
+
+        // Comando que funcionou no seu teste manual (com WindowStyle Hidden para não atrapalhar a tela)
+        const soundCommand = `powershell -WindowStyle Hidden -Command "Add-Type -AssemblyName PresentationCore; $mediaPlayer = New-Object System.Windows.Media.MediaPlayer; $mediaPlayer.Open('${audioPath}'); Start-Sleep -s 1; $mediaPlayer.Play(); Start-Sleep -s 3"`;
+
+        // Executa em background, sem await, para a Lais receber o feedback do pedido na hora
+        execAsync(soundCommand).catch(e => console.log("Erro assíncrono no som:", e.message));
+
+    } catch (soundErr) {
+        console.log("Erro ao inicializar o som:", soundErr.message);
+    }
+})
 
 socket.io.on("reconnect", (attempt) => {
     console.log("reconnected:", attempt);
