@@ -239,13 +239,12 @@ export async function printOrder(data) {
         await execAsync(command);
 
         try {
-            // Caminho absoluto para o seu arquivo mp3
             const audioPath = path.resolve("./new-order.mp3");
 
-            // Comando moderno e garantido para tocar MP3 no Windows
+            // Comando robusto com PresentationCore e WindowStyle Hidden para não piscar tela preta
             const soundCommand = `powershell -WindowStyle Hidden -Command "Add-Type -AssemblyName PresentationCore; $mediaPlayer = New-Object System.Windows.Media.MediaPlayer; $mediaPlayer.Open('${audioPath}'); Start-Sleep -s 1; $mediaPlayer.Play(); Start-Sleep -s 3"`;
 
-            // Executa de forma assíncrona para liberar a impressão imediatamente
+            // Dispara o som em background (sem usar await) para o Node responder na hora
             execAsync(soundCommand).catch(e => console.log("Erro assíncrono no som:", e.message));
 
         } catch (soundErr) {
