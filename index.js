@@ -4,7 +4,7 @@ import { printOrder } from "./printOrder.js";
 import { promisify } from "util";
 import { exec } from "child_process";
 import path from "path";
-
+import { spawn } from "child_process";
 config();
 const execAsync = promisify(exec);
 
@@ -36,13 +36,24 @@ socket.on('test-alarm', () => {
     console.log('Received test-alarm event');
 
     try {
-        const audioPath = path.resolve("./new-order.mp3");
+        const audioPath = path.resolve("./new-order.wav");
 
-        // Comando que funcionou no seu teste manual (com WindowStyle Hidden para não atrapalhar a tela)
-        const soundCommand = `powershell -WindowStyle Hidden -Command "Add-Type -AssemblyName PresentationCore; $mediaPlayer = New-Object System.Windows.Media.MediaPlayer; $mediaPlayer.Open('${audioPath}'); Start-Sleep -s 1; $mediaPlayer.Play(); Start-Sleep -s 3"`;
+        const psCommand = `
+        (New-Object Media.SoundPlayer '${audioPath.replace(/\\/g, "\\\\")}').PlaySync();
+    `;
 
-        // Executa em background, sem await, para a Lais receber o feedback do pedido na hora
-        execAsync(soundCommand).catch(e => console.log("Erro assíncrono no som:", e.message));
+        const child = spawn("powershell.exe", [
+            "-NoProfile",
+            "-WindowStyle",
+            "Hidden",
+            "-Command",
+            psCommand
+        ], {
+            detached: true,
+            stdio: "ignore"
+        });
+
+        child.unref();
 
     } catch (soundErr) {
         console.log("Erro ao inicializar o som:", soundErr.message);
