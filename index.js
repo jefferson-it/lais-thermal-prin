@@ -5,6 +5,8 @@ import { promisify } from "util";
 import { exec } from "child_process";
 import path from "path";
 import { spawn } from "child_process";
+import player from "node-wav-player";
+
 config();
 const execAsync = promisify(exec);
 
@@ -32,34 +34,18 @@ socket.on("disconnect", (reason) => {
     console.log("disconnect:", reason);
 });
 
-socket.on('test-alarm', () => {
+socket.on('test-alarm', async () => {
     console.log('Received test-alarm event');
 
     try {
-        const audioPath = path.resolve("./new-order.wav");
-
-        const psCommand = `
-        (New-Object Media.SoundPlayer '${audioPath.replace(/\\/g, "\\\\")}').PlaySync();
-    `;
-
-        const child = spawn("powershell.exe", [
-            "-NoProfile",
-            "-WindowStyle",
-            "Hidden",
-            "-Command",
-            psCommand
-        ], {
-            detached: true,
-            stdio: "ignore"
+        await player.play({
+            path: path.resolve("./new-order.wav"),
         });
 
-        child.unref();
-
-    } catch (soundErr) {
-        console.log("Erro ao inicializar o som:", soundErr.message);
+    } catch (err) {
+        console.log("Erro ao tocar áudio:", err);
     }
-})
-
+});
 socket.io.on("reconnect", (attempt) => {
     console.log("reconnected:", attempt);
     register();
