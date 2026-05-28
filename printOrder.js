@@ -3,7 +3,7 @@ import path from "path";
 import { exec } from "child_process";
 import { promisify } from "util";
 import moment from "moment";
-import { spawn } from "child_process";
+import player from "node-wav-player";
 
 const execAsync = promisify(exec);
 
@@ -239,29 +239,11 @@ export async function printOrder(data) {
         const command = `cmd.exe /c copy /b "${filePath}" "\\\\127.0.0.1\\${printerName}"`;
         await execAsync(command);
 
-        try {
-            const audioPath = path.resolve("./new-order.wav");
-
-            const psCommand = `
-        (New-Object Media.SoundPlayer '${audioPath.replace(/\\/g, "\\\\")}').PlaySync();
-    `;
-
-            const child = spawn("powershell.exe", [
-                "-NoProfile",
-                "-WindowStyle",
-                "Hidden",
-                "-Command",
-                psCommand
-            ], {
-                detached: true,
-                stdio: "ignore"
-            });
-
-            child.unref();
-
-        } catch (soundErr) {
-            console.log("Erro ao inicializar o som:", soundErr.message);
-        }
+        player.play({
+            path: path.resolve("./new-order.wav"),
+        }).catch(err => {
+            console.log("Erro ao tocar áudio:", err.message);
+        });
         console.log(`[PRINTED] Pedido #${num}`);
         return true;
 

@@ -1,14 +1,10 @@
 import { config } from "dotenv";
 import { io } from "socket.io-client";
 import { printOrder } from "./printOrder.js";
-import { promisify } from "util";
-import { exec } from "child_process";
 import path from "path";
-import { spawn } from "child_process";
 import player from "node-wav-player";
 
 config();
-const execAsync = promisify(exec);
 
 const socket = io(process.env.URI, {
     reconnection: true,
@@ -34,18 +30,6 @@ socket.on("disconnect", (reason) => {
     console.log("disconnect:", reason);
 });
 
-socket.on('test-alarm', async () => {
-    console.log('Received test-alarm event');
-
-    try {
-        await player.play({
-            path: path.resolve("./new-order.wav"),
-        });
-
-    } catch (err) {
-        console.log("Erro ao tocar áudio:", err);
-    }
-});
 socket.io.on("reconnect", (attempt) => {
     console.log("reconnected:", attempt);
     register();
@@ -59,9 +43,17 @@ socket.io.on("reconnect_error", (err) => {
     console.error("reconnect error:", err.message);
 });
 
-setInterval(() => {
-    socket.emit("printer-ping");
-}, 10000);
+socket.on("test-alarm", async () => {
+    console.log("Received test-alarm event");
+
+    try {
+        await player.play({
+            path: path.resolve("./new-order.wav")
+        });
+    } catch (err) {
+        console.log("Erro ao tocar áudio:", err.message);
+    }
+});
 
 socket.on("print-order", async (payload) => {
     if (payload.id !== socket.id) return;
@@ -71,4 +63,16 @@ socket.on("print-order", async (payload) => {
     } catch (err) {
         console.error(err);
     }
+});
+
+setInterval(() => {
+    socket.emit("printer-ping");
+}, 10000);
+
+process.on("uncaughtException", (err) => {
+    console.error("UNCAUGHT EXCEPTION:", err);
+});
+
+process.on("unhandledRejection", (reason) => {
+    console.error("UNHANDLED REJECTION:", reason);
 });
