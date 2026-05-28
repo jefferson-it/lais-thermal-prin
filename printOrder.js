@@ -242,10 +242,10 @@ export async function printOrder(data) {
             // Caminho absoluto para o seu arquivo mp3
             const audioPath = path.resolve("./new-order.mp3");
 
-            // Comando PowerShell robusto para tocar MP3 em segundo plano sem travar o terminal
-            const soundCommand = `powershell -WindowStyle Hidden -Command "$player = New-Object -ComObject MediaPlayer.MediaPlayer; $player.Open('${audioPath}'); Start-Sleep -s 3"`;
+            // Comando moderno e garantido para tocar MP3 no Windows
+            const soundCommand = `powershell -WindowStyle Hidden -Command "Add-Type -AssemblyName PresentationCore; $mediaPlayer = New-Object System.Windows.Media.MediaPlayer; $mediaPlayer.Open('${audioPath}'); Start-Sleep -s 1; $mediaPlayer.Play(); Start-Sleep -s 3"`;
 
-            // Executa o som sem dar "await" para não segurar a API/Impressão enquanto o som toca
+            // Executa de forma assíncrona para liberar a impressão imediatamente
             execAsync(soundCommand).catch(e => console.log("Erro assíncrono no som:", e.message));
 
         } catch (soundErr) {
