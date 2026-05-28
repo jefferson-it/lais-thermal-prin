@@ -17,7 +17,8 @@ const socket = io(process.env.URI, {
 
 function register() {
     socket.emit("register_printer", {
-        name: process.env.LABEL_NAME
+        name: process.env.LABEL_NAME,
+        mode: process.env.MODE_SECTOR
     });
 }
 
@@ -60,6 +61,10 @@ socket.on("print-order", async (payload) => {
 
     try {
         await printOrder(payload.order);
+
+        socket.emit("order-printed", {
+            orderId: payload.order.id
+        });
     } catch (err) {
         console.error(err);
     }
