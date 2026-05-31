@@ -121,13 +121,16 @@ export async function printOrder(data) {
             const total = amount * price;
             subtotal += total;
 
-            productLines.push(sanitizeText(`${amount}x ${item.name}`));
+            productLines.push(
+                columns(
+                    sanitizeText(`${amount}x ${item.name}`),
+                    money(total)
+                )
+            );
 
             if (item.codeRef) {
                 productLines.push(sanitizeText(`Cod: ${item.codeRef}`));
             }
-
-            productLines.push(money(total));
 
             if (item.obs) {
                 productLines.push(sanitizeText(`Obs: ${item.obs}`));
