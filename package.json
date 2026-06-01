@@ -3,9 +3,11 @@
   "version": "1.0.0",
   "description": "",
   "type": "module",
-  "main": "index.js",
+  "main": "src/index.ts",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "ts-node src/index.ts",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node18 --outfile=dist/index.js --format=cjs --packages=external",
+    "package": "npm run build && pkg dist/index.js --targets node18-win-x64,node18-linux-x64 --out-path bin --compress Gzip"
   },
   "keywords": [],
   "author": "",
@@ -17,5 +19,13 @@
     "node-wav-player": "^1.0.0",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3"
-  }
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "esbuild": "^0.20.1",
+    "pkg": "^5.8.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  },
+  "bin": "dist/index.js"
 }
