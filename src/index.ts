@@ -4,11 +4,15 @@ import path from "path";
 import player from "node-wav-player";
 import { ensureEnv } from "./envGenerator.js";
 import { SocketPrintPayload } from "./types.js";
+import { setupLogger } from "./logger.js";
 
 const isPkg = (process as any).pkg !== undefined;
 const appDir = isPkg ? path.dirname(process.execPath) : process.cwd();
 
 async function main() {
+    // Inicializar gravação de logs em arquivo antes de qualquer ação
+    setupLogger();
+
     // 1. Garantir que as configurações de ambiente (.env) estejam carregadas ou geradas
     await ensureEnv();
 
