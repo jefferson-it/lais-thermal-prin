@@ -66,10 +66,12 @@ async function main() {
         console.error("❌ Erro na tentativa de reconexão:", err.message);
     });
 
-    socket.on("test-alarm", async () => {
+    socket.on("test-alarm", async (id: string) => {
+        if (id !== socket.id) return;
         console.log("🔔 Evento 'test-alarm' recebido! Reproduzindo som de teste...");
         try {
             const wavPath = path.join(appDir, "new-order.wav");
+
             await player.play({
                 path: wavPath
             });

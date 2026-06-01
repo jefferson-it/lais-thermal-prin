@@ -5,7 +5,7 @@
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
-    "dev": "ts-node src/index.ts",
+    "dev": "tsx src/index.ts",
     "build": "esbuild src/index.ts --bundle --platform=node --target=node18 --outfile=dist/index.js --format=cjs --packages=external",
     "package": "npm run build && pkg dist/index.js --targets node18-win-x64,node18-linux-x64 --out-path bin --compress Gzip"
   },
@@ -25,6 +25,7 @@
     "esbuild": "^0.20.1",
     "pkg": "^5.8.1",
     "ts-node": "^10.9.2",
+    "tsx": "^4.22.4",
     "typescript": "^5.3.3"
   },
   "bin": "dist/index.js"
