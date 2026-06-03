@@ -5,7 +5,7 @@
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
-    "dev": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
     "build": "esbuild src/index.ts --bundle --platform=node --target=node18 --outfile=dist/index.js --format=cjs --packages=external",
     "package": "npm run build && pkg dist/index.js --targets node18-win-x64,node18-linux-x64 --out-path bin --compress Gzip"
   },

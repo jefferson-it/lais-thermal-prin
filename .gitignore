@@ -2,5 +2,6 @@ node_modules
 .env
 **/.env
 print.txt
+print*.txt
 dist/
 lais-thermal.log
