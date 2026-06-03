@@ -118,8 +118,8 @@ export async function printOrder(data: OrderData, socket?: any): Promise<boolean
          | HEADER
          |--------------------------------------------------------------------------
          */
-        const withdrawText = withdraw === "Mesa" && to_table 
-            ? `MESA ${to_table.split("@").at(-1)}` 
+        const withdrawText = withdraw === "Mesa" && to_table
+            ? `MESA ${to_table.split("@").at(-1)}`
             : sanitizeText(withdraw) || "";
 
         output.push(center(`PEDIDO #${num} - ${withdrawText}`));
@@ -266,7 +266,11 @@ export async function printOrder(data: OrderData, socket?: any): Promise<boolean
          | SAVE & PRINT SEND
          |--------------------------------------------------------------------------
          */
-        const filePath = path.join(appDir, "print.txt");
+        // Arquivo único por pedido — evita que um segundo pedido sobrescreva
+        // o arquivo antes do copy /b do primeiro terminar de ler, causando
+        // impressão duplicada ou do pedido errado.
+        const fileName = `print_${num}_${Date.now()}.txt`;
+        const filePath = path.join(appDir, fileName);
 
         // Write with latin1 encoding to match POS printers expectations
         fs.writeFileSync(filePath, output.join("\r\n"), "latin1");
@@ -275,7 +279,12 @@ export async function printOrder(data: OrderData, socket?: any): Promise<boolean
         console.log(`Sending to printer: ${printerName}...`);
 
         const command = `cmd.exe /c copy /b "${filePath}" "\\\\127.0.0.1\\${printerName}"`;
-        await execAsync(command);
+        try {
+            await execAsync(command);
+        } finally {
+            fs.unlink(filePath, () => { });
+        }
+
 
         const wavPath = path.join(appDir, "new-order.wav");
         player.play({
