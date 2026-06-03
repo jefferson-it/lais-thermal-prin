@@ -1,10 +1,21 @@
-export interface Product {
-  removed?: boolean;
+export interface ProdVariant {
+  _id: string;
+  prod: string;
+  label: string;
+  price: number;
   amount?: number;
-  price?: number;
+  _delete?: boolean;
+}
+
+export interface Product {
+  _id: string;
   name: string;
-  codeRef?: string;
+  price: number;
+  amount: number;
+  removed?: boolean;
   obs?: string;
+  codeRef?: string;
+  variation?: ProdVariant[];
 }
 
 export interface ClientLoad {

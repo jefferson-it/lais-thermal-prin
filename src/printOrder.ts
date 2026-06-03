@@ -4,7 +4,7 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import moment from "moment";
 import player from "node-wav-player";
-import { OrderData } from "./types.js";
+import { OrderData, Product, ProdVariant } from "./types.js";
 
 const execAsync = promisify(exec);
 
@@ -57,6 +57,23 @@ const section = (title: string, lines: string[]): string => {
         line(),
         ...lines
     ].join("\r\n");
+};
+
+const activeVariations = (variation: ProdVariant[] = []): ProdVariant[] =>
+    variation.filter((v) => !v._delete && Number(v.amount ?? 0) > 0);
+
+const formatLineName = (name: string, variantLabel?: string): string => {
+    const label = variantLabel?.trim();
+    return label ? `${name} - ${label}` : name;
+};
+
+const appendProductMeta = (lines: string[], item: Product): void => {
+    if (item.codeRef) {
+        lines.push(sanitizeText(`Cod: ${item.codeRef}`));
+    }
+    if (item.obs) {
+        lines.push(sanitizeText(`Obs: ${item.obs}`));
+    }
 };
 
 /*
@@ -124,26 +141,37 @@ export async function printOrder(data: OrderData, socket?: any): Promise<boolean
         for (const item of prods) {
             if (item.removed) continue;
 
-            const amount = Number(item.amount || 0);
-            const price = Number(item.price || 0);
-            const total = amount * price;
-            subtotal += total;
+            const variants = activeVariations(item.variation);
 
-            productLines.push(
-                columns(
-                    `${amount}x ${item.name}`,
-                    money(total)
-                )
-            );
+            if (variants.length > 0) {
+                for (const variant of variants) {
+                    const amount = Number(variant.amount ?? 0);
+                    const price = Number(variant.price ?? 0);
+                    const total = amount * price;
+                    subtotal += total;
 
-            if (item.codeRef) {
-                productLines.push(sanitizeText(`Cod: ${item.codeRef}`));
+                    productLines.push(
+                        columns(
+                            `${amount}x ${formatLineName(item.name, variant.label)}`,
+                            money(total)
+                        )
+                    );
+                }
+            } else {
+                const amount = Number(item.amount || 0);
+                const price = Number(item.price || 0);
+                const total = amount * price;
+                subtotal += total;
+
+                productLines.push(
+                    columns(
+                        `${amount}x ${item.name}`,
+                        money(total)
+                    )
+                );
             }
 
-            if (item.obs) {
-                productLines.push(sanitizeText(`Obs: ${item.obs}`));
-            }
-
+            appendProductMeta(productLines, item);
             productLines.push("");
         }
 
