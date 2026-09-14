@@ -38,7 +38,7 @@ export async function ensureEnv(): Promise<void> {
     const labelName = await rl.question("2. Nome de Identificação do Painel [Cafeteria]: ");
     const finalLabelName = labelName.trim() || "Cafeteria";
 
-    const modeSector = await rl.question("3. Setor correspondente [cafeteria]: ");
+    const modeSector = await rl.question("3. Setor correspondente (cafeteria | balcao | duo | entrega) [cafeteria]: ");
     const finalModeSector = modeSector.trim() || "cafeteria";
 
     const storeCode = await rl.question("4. Código da loja (storeCode) [capim-grosso-principal]: ");
@@ -67,7 +67,7 @@ export async function ensureEnv(): Promise<void> {
 
   } catch (error) {
     console.error("❌ Erro ao gerar o arquivo .env:", error);
-    process.exit(1);
+    throw error;
   } finally {
     rl.close();
   }
