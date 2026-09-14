@@ -19,9 +19,15 @@ async function main() {
     const uri = process.env.URI;
     const labelName = process.env.LABEL_NAME;
     const modeSector = process.env.MODE_SECTOR;
+    const storeCode = process.env.STORE;
 
     if (!uri) {
         console.error("❌ ERRO CRÍTICO: URI do Socket.io não está definida no .env");
+        process.exit(1);
+    }
+
+    if (!storeCode) {
+        console.error("❌ ERRO CRÍTICO: Código da loja (STORE) não está definida no .env");
         process.exit(1);
     }
 
@@ -37,10 +43,11 @@ async function main() {
     });
 
     function register() {
-        console.log(`📝 Registrando impressora: "${labelName}" | Setor: "${modeSector}"`);
+        console.log(`📝 Registrando impressora: "${labelName}" | Setor: "${modeSector}" | Loja: "${storeCode}"`);
         socket.emit("register_printer", {
             name: labelName,
-            mode: modeSector
+            mode: modeSector,
+            store: storeCode
         });
     }
 

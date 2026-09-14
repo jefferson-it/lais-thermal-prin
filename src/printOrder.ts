@@ -122,6 +122,9 @@ export async function printOrder(data: OrderData, socket?: any): Promise<boolean
             ? `MESA ${to_table.split("@").at(-1)}`
             : sanitizeText(withdraw) || "";
 
+        if (process.env.STORE) {
+            output.push(center(sanitizeText(process.env.STORE).toUpperCase()));
+        }
         output.push(center(`PEDIDO #${num} - ${withdrawText}`));
         output.push(center(moment(created_at).format("DD/MM/YYYY [as] HH:mm")));
 

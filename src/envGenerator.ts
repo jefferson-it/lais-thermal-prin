@@ -41,13 +41,17 @@ export async function ensureEnv(): Promise<void> {
     const modeSector = await rl.question("3. Setor correspondente [cafeteria]: ");
     const finalModeSector = modeSector.trim() || "cafeteria";
 
-    const printerName = await rl.question("4. Nome de compartilhamento da Impressora [EPSON-PEDIDOS]: ");
+    const storeCode = await rl.question("4. Código da loja (storeCode) [capim-grosso-principal]: ");
+    const finalStoreCode = storeCode.trim() || "capim-grosso-principal";
+
+    const printerName = await rl.question("5. Nome de compartilhamento da Impressora [EPSON-PEDIDOS]: ");
     const finalPrinterName = printerName.trim() || "EPSON-PEDIDOS";
 
     const envContent = [
       `URI=${finalUri}`,
       `LABEL_NAME=${finalLabelName}`,
       `MODE_SECTOR=${finalModeSector}`,
+      `STORE=${finalStoreCode}`,
       `PRINTER_NAME=${finalPrinterName}`
     ].join("\n") + "\n";
 
