@@ -29,8 +29,31 @@ const sleep = (ms: number): Promise<void> => new Promise((res) => setTimeout(res
 const backoffDelay = (attempt: number): number =>
     Math.min(1000 * 2 ** Math.min(attempt - 1, 5), 30000);
 
+async function checkForUpdate(): Promise<boolean> {
+    const flag = await fetch("/tmp/lais-thermal-update-flag")
+        .then(r => r.text())
+        .then(t => t.trim());
+    if (flag === "1") {
+        console.log("🔍 Detectada atualização do repositório...");
+        const { exec } = await import("child_process");
+        const { promisify } = await import("util");
+        const execAsync = promisify(exec);
+        try {
+            await execAsync("git pull origin main");
+            await execAsync("rm /tmp/lais-thermal-update-flag");
+            return true;
+        } catch (err) {
+            console.error("❌ Falha ao atualizar:", err);
+        }
+    }
+    return false;
+}
+
 async function startApp(): Promise<void> {
-    // 1. Garantir que as configurações de ambiente (.env) estejam carregadas ou geradas
+    // 1. Verificar se há atualizações do repositório
+    await checkForUpdate();
+
+    // 2. Garantir que as configurações de ambiente (.env) estejam carregadas ou geradas
     await ensureEnv();
 
     const uri = process.env.URI;
