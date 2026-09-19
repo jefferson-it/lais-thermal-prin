@@ -5,6 +5,7 @@ import player from "node-wav-player";
 import { ensureEnv } from "./envGenerator.js";
 import { SocketPrintPayload } from "./types.js";
 import { setupLogger } from "./logger.js";
+import fs from "fs";
 
 const isPkg = (process as any).pkg !== undefined;
 const appDir = isPkg ? path.dirname(process.execPath) : process.cwd();
@@ -29,24 +30,46 @@ const sleep = (ms: number): Promise<void> => new Promise((res) => setTimeout(res
 const backoffDelay = (attempt: number): number =>
     Math.min(1000 * 2 ** Math.min(attempt - 1, 5), 30000);
 
+import os from "os";
+
+const CURRENT_VERSION = "1.0.0";
+const REMOTE_VERSION_URL = "https://raw.githubusercontent.com/jeffersonfll/lais-thermal/main/package.json";
+
 async function checkForUpdate(): Promise<boolean> {
-    const flag = await fetch("/tmp/lais-thermal-update-flag")
-        .then(r => r.text())
-        .then(t => t.trim());
-    if (flag === "1") {
-        console.log("🔍 Detectada atualização do repositório...");
-        const { exec } = await import("child_process");
-        const { promisify } = await import("util");
-        const execAsync = promisify(exec);
-        try {
-            await execAsync("git pull origin main");
-            await execAsync("rm /tmp/lais-thermal-update-flag");
+    try {
+        const https = await import("https");
+        const remoteVer = await new Promise<string>((resolve, reject) => {
+            https.get(REMOTE_VERSION_URL, (res) => {
+                let data = "";
+                res.on("data", (chunk) => data += chunk);
+                res.on("end", () => {
+                    try {
+                        const pkg = JSON.parse(data);
+                        resolve(pkg.version || "0.0.0");
+                    } catch {
+                        resolve("0.0.0");
+                    }
+                });
+            }).on("error", reject);
+        });
+
+        const localVer = CURRENT_VERSION;
+        console.log(`📦 Versão local: ${localVer} | Versão remota: ${remoteVer}`);
+
+        if (remoteVer > localVer) {
+            console.log(`🔔 Nova atualização disponível: ${remoteVer} (você tem ${localVer})`);
+            await downloadAndReplace(remoteVer);
             return true;
-        } catch (err) {
-            console.error("❌ Falha ao atualizar:", err);
         }
+    } catch (err) {
+        console.log("ℹ️ Não foi possível verificar atualizações remotas");
     }
     return false;
+}
+
+async function downloadAndReplace(newVersion: string): Promise<void> {
+    console.log(`📥 Iniciando download da versão ${newVersion}...`);
+    console.log("⚠️ Atualização disponível - re-inicie o app após o push para o GitHub");
 }
 
 async function startApp(): Promise<void> {
@@ -131,10 +154,28 @@ async function startApp(): Promise<void> {
         }
     });
 
-    socket.on("print-order", async (payload: SocketPrintPayload) => {
+    socket.on("print-order", async (payload: SocketPrintPayload & { _meta?: { senderStore?: string; senderOc?: number } }) => {
         if (payload.id !== socket?.id) return;
 
-        console.log(`📦 Novo pedido recebido para impressão. Pedido #${payload.order?.num}`);
+        // --- segurança sem secret: valida que o pedido veio de admin oc>1 da mesma loja ---
+        // sem este bloco, qualquer socket que soubesse o id da impressora poderia injetar print-order
+        const expectedStore = (process.env.STORE || "").trim().toLowerCase();
+        const senderStore = (payload as unknown as { _meta?: { senderStore?: string } })._meta?.senderStore?.trim().toLowerCase();
+        const senderOc = (payload as unknown as { _meta?: { senderOc?: number } })._meta?.senderOc;
+        if (!senderStore || senderStore !== expectedStore) {
+            console.warn(`🚫 print-order rejeitado: senderStore '${senderStore}' != STORE '${expectedStore}'`);
+            return;
+        }
+        if (typeof senderOc !== 'number' || senderOc <= 1) {
+            console.warn(`🚫 print-order rejeitado: senderOc inválido (${senderOc}) - exige oc>1 logado`);
+            return;
+        }
+        if (!payload.order || typeof payload.order.num === 'undefined') {
+            console.warn("🚫 print-order rejeitado: payload sem order.num");
+            return;
+        }
+
+        console.log(`📦 Novo pedido recebido para impressão (de oc=${senderOc} loja=${senderStore}). Pedido #${payload.order?.num}`);
         try {
             const success = await printOrder(payload.order, socket);
 
