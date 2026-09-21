@@ -57,7 +57,7 @@ function toErrorPayload(error: unknown) {
  */
 export function emitDebug(message: string, meta?: unknown): void {
     const socket = activeSocket;
-    if (!socket?.connected) return;
+    if (!socket) return;
 
     const payload = {
         ...basePayload(),
@@ -66,10 +66,15 @@ export function emitDebug(message: string, meta?: unknown): void {
     };
 
     try {
+        // socket.io bufferiza se desconectado — tenta enviar de qualquer forma
         // Evento solicitado com a grafia original (mantém compatibilidade com server legado)
-        socket.emit("debug-mensage", payload);
+        (socket as any).emit("debug-mensage", payload);
         // Grafia correta em inglês para novos servers
-        socket.emit("debug-message", payload);
+        (socket as any).emit("debug-message", payload);
+        if (!socket.connected) {
+            // eslint-disable-next-line no-console
+            console.warn(`[socketHelper] emitDebug enviado com socket desconectado (será bufferizado): ${message}`);
+        }
     } catch {
         // nunca quebrar o fluxo por falha de emit
     }
@@ -80,7 +85,7 @@ export function emitDebug(message: string, meta?: unknown): void {
  */
 export function emitError(error: unknown, context?: string, meta?: unknown): void {
     const socket = activeSocket;
-    if (!socket?.connected) return;
+    if (!socket) return;
 
     const err = toErrorPayload(error);
 
@@ -95,8 +100,19 @@ export function emitError(error: unknown, context?: string, meta?: unknown): voi
     };
 
     try {
-        socket.emit("send-error", payload);
+        (socket as any).emit("send-error", payload);
+        if (!socket.connected) {
+            // eslint-disable-next-line no-console
+            console.warn(`[socketHelper] emitError enviado com socket desconectado (bufferizado) context=${context}: ${err.message.slice(0, 120)}`);
+        }
     } catch {
         // nunca quebrar o fluxo por falha de emit
     }
+    // Fallback extra: tenta também via socket direto se helper falhar por qualquer motivo
+    try {
+        if ((socket as any)?.io && !(socket as any).connected) {
+            // força emit via manager se possível
+            (socket as any).emit("send-error", payload);
+        }
+    } catch {}
 }

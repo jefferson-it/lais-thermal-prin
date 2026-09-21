@@ -210,11 +210,11 @@ async function startApp(): Promise<void> {
                 });
                 emitDebug("order-printed enviado", { orderNum: payload.order.num, clientId: payload.clientId });
             } else {
-                emitError(new Error("printOrder retornou false"), "print-order:printOrder-failed", { orderNum: payload.order?.num });
+                emitError(new Error(`Falha na impressão — pedido #${payload.order?.num} não foi impresso (impressora retornou erro)`), "print-order:printOrder-failed", { orderNum: payload.order?.num, platform: process.platform });
             }
         } catch (err) {
             console.error("❌ Erro inesperado no fluxo de impressão do pedido:", err);
-            emitError(err, "print-order:unexpected", { orderNum: payload.order?.num });
+            emitError(err, "print-order:unexpected", { orderNum: payload.order?.num, platform: process.platform });
         }
     });
 
