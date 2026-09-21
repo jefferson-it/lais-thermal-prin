@@ -5,6 +5,7 @@ import { promisify } from "util";
 import moment from "moment";
 import player from "node-wav-player";
 import { OrderData, Product, ProdVariant } from "./types.js";
+import { emitDebug, emitError } from "./socketHelper.js";
 
 const execAsync = promisify(exec);
 
@@ -280,10 +281,16 @@ export async function printOrder(data: OrderData, socket?: any): Promise<boolean
 
         const printerName = process.env.PRINTER_NAME || "EPSON-PEDIDOS";
         console.log(`Sending to printer: ${printerName}...`);
+        emitDebug(`Enviando pedido #${num} para impressora`, { printerName, fileName });
 
         const command = `cmd.exe /c copy /b "${filePath}" "\\\\127.0.0.1\\${printerName}"`;
         try {
             await execAsync(command);
+            emitDebug(`Comando de impressão executado`, { printerName, fileName, orderNum: num });
+        } catch (err) {
+            console.error(`[PRINT ERROR] Falha ao enviar para impressora ${printerName}:`, err);
+            emitError(err, "printOrder:exec", { printerName, fileName, orderNum: num });
+            throw err;
         } finally {
             fs.unlink(filePath, () => { });
         }
@@ -294,13 +301,16 @@ export async function printOrder(data: OrderData, socket?: any): Promise<boolean
             path: wavPath,
         }).catch((err: any) => {
             console.log("Erro ao tocar áudio:", err.message);
+            emitError(err, "printOrder:audio", { orderNum: num });
         });
 
         console.log(`[PRINTED] Pedido #${num}`);
+        emitDebug(`Pedido #${num} impresso com sucesso`, { orderNum: num });
         return true;
 
     } catch (err) {
         console.error("[PRINT ERROR]", err);
+        emitError(err, "printOrder:unexpected", { orderNum: (data as any)?.num });
         return false;
     }
 }

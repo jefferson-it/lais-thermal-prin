@@ -5,6 +5,7 @@ import player from "node-wav-player";
 import { ensureEnv } from "./envGenerator.js";
 import { SocketPrintPayload } from "./types.js";
 import { setupLogger } from "./logger.js";
+import { setSocket, emitDebug, emitError } from "./socketHelper.js";
 import fs from "fs";
 
 const isPkg = (process as any).pkg !== undefined;
@@ -18,6 +19,7 @@ setupLogger();
  */
 let socket: Socket | null = null;
 let pingInterval: NodeJS.Timeout | null = null;
+let debugHeartbeat: NodeJS.Timeout | null = null;
 let shuttingDown = false;
 let bootAttempt = 0;
 let bootLoopActive = false;
@@ -63,6 +65,7 @@ async function checkForUpdate(): Promise<boolean> {
         }
     } catch (err) {
         console.log("ℹ️ Não foi possível verificar atualizações remotas");
+        emitError(err, "checkForUpdate");
     }
     return false;
 }
@@ -103,6 +106,9 @@ async function startApp(): Promise<void> {
         transports: ["websocket"]
     });
 
+    // Disponibiliza o socket para o helper de debug/error
+    setSocket(socket);
+
     function register() {
         console.log(`📝 Registrando impressora: "${labelName}" | Setor: "${modeSector}" | Loja: "${storeCode}"`);
         socket?.emit("register_printer", {
@@ -110,20 +116,26 @@ async function startApp(): Promise<void> {
             mode: modeSector,
             store: storeCode
         });
+        emitDebug("register_printer enviado", { labelName, modeSector, storeCode });
     }
 
     socket.on("connect", () => {
         console.log("✅ Conectado ao servidor! ID do Socket:", socket?.id);
+        emitDebug("conectado ao servidor", { socketId: socket?.id, uri });
         register();
     });
 
     socket.on("disconnect", (reason) => {
         console.log("⚠️ Desconectado do servidor. Motivo:", reason);
+        // Ainda tenta enviar se houver reconexão pendente; se socket desconectado o helper ignora silenciosamente
+        // emitError gravado como debug para não poluir send-error com disconnects normais
+        emitDebug("desconectado do servidor", { reason });
     });
 
     socket.on("connect_error", (err) => {
         const detail = err instanceof Error ? err.message : String(err);
         console.error("❌ Erro de conexão:", detail);
+        emitError(err, "connect_error", { uri });
     });
 
     socket.io.on("reconnect", (attempt) => {
@@ -138,11 +150,21 @@ async function startApp(): Promise<void> {
     socket.io.on("reconnect_error", (err) => {
         const detail = err instanceof Error ? err.message : String(err);
         console.error("❌ Erro na tentativa de reconexão:", detail);
+        emitError(err, "reconnect_error");
     });
+
+    // Listener de debug vindo do servidor — útil para diagnóstico remoto
+    const handleRemoteDebug = (payload: unknown) => {
+        console.log("🐛 [debug-mensage] recebido do servidor:", payload);
+        emitDebug("debug-mensage recebido do servidor", payload);
+    };
+    socket.on("debug-mensage", handleRemoteDebug);
+    socket.on("debug-message", handleRemoteDebug);
 
     socket.on("test-alarm", async (id: string) => {
         if (id !== socket?.id) return;
         console.log("🔔 Evento 'test-alarm' recebido! Reproduzindo som de teste...");
+        emitDebug("test-alarm recebido", { socketId: socket?.id });
         try {
             const wavPath = path.join(appDir, "new-order.wav");
 
@@ -151,6 +173,7 @@ async function startApp(): Promise<void> {
             });
         } catch (err: any) {
             console.log("❌ Erro ao reproduzir som de teste:", err?.message ?? err);
+            emitError(err, "test-alarm:play");
         }
     });
 
@@ -176,6 +199,7 @@ async function startApp(): Promise<void> {
         }
 
         console.log(`📦 Novo pedido recebido para impressão (de oc=${senderOc} loja=${senderStore}). Pedido #${payload.order?.num}`);
+        emitDebug("print-order recebido", { orderNum: payload.order?.num, senderStore, senderOc, clientId: payload.clientId });
         try {
             const success = await printOrder(payload.order, socket);
 
@@ -184,9 +208,13 @@ async function startApp(): Promise<void> {
                     orderId: payload.order.num,
                     clientId: payload.clientId
                 });
+                emitDebug("order-printed enviado", { orderNum: payload.order.num, clientId: payload.clientId });
+            } else {
+                emitError(new Error("printOrder retornou false"), "print-order:printOrder-failed", { orderNum: payload.order?.num });
             }
         } catch (err) {
             console.error("❌ Erro inesperado no fluxo de impressão do pedido:", err);
+            emitError(err, "print-order:unexpected", { orderNum: payload.order?.num });
         }
     });
 
@@ -195,6 +223,13 @@ async function startApp(): Promise<void> {
     pingInterval = setInterval(() => {
         socket?.emit("printer-ping");
     }, 10000);
+
+    // Heartbeat de debug a cada 60s (apenas se conectado) para observabilidade remota
+    debugHeartbeat = setInterval(() => {
+        emitDebug("heartbeat", { uptime: process.uptime(), socketId: socket?.id });
+    }, 60000);
+    // Não bloquear encerramento caso apenas este timer reste
+    if ((debugHeartbeat as any).unref) (debugHeartbeat as any).unref();
 }
 
 /**
@@ -213,6 +248,7 @@ async function bootLoop(): Promise<void> {
             } catch (err) {
                 const delay = backoffDelay(bootAttempt);
                 console.error(`💥 Inicialização falhou (tentativa #${bootAttempt}). Reiniciando em ${delay / 1000}s...`, err);
+                emitError(err, "bootLoop:startApp");
                 await sleep(delay);
             }
         }
@@ -231,10 +267,17 @@ function hardRestart(reason: unknown): void {
     restartQueued = true;
     console.error("🔁 Reinício automático agendado após erro crítico.", reason);
 
+    // Tenta enviar o erro para o servidor antes de limpar o socket
+    try { emitError(reason, "hardRestart"); } catch { /* ignore */ }
+
     // Limpar estado anterior
     if (pingInterval) {
         clearInterval(pingInterval);
         pingInterval = null;
+    }
+    if (debugHeartbeat) {
+        clearInterval(debugHeartbeat);
+        debugHeartbeat = null;
     }
     if (socket) {
         try {
@@ -243,6 +286,7 @@ function hardRestart(reason: unknown): void {
         } catch { /* ignore */ }
         socket = null;
     }
+    setSocket(null);
 
     const delay = backoffDelay(bootAttempt++);
     restartTimer = setTimeout(() => {
@@ -250,17 +294,20 @@ function hardRestart(reason: unknown): void {
         restartTimer = null;
         bootLoop().catch((err) => {
             console.error("🔥 Falha no ciclo de reinício:", err);
+            try { emitError(err, "bootLoop:hardRestart"); } catch { /* ignore */ }
         });
     }, delay);
 }
 
 process.on("uncaughtException", (err) => {
     console.error("🔥 EXCEÇÃO NÃO TRATADA (uncaughtException):", err);
+    try { emitError(err, "uncaughtException"); } catch { /* ignore */ }
     hardRestart(err);
 });
 
 process.on("unhandledRejection", (reason) => {
     console.error("🔥 REJEIÇÃO NÃO TRATADA (unhandledRejection):", reason);
+    try { emitError(reason, "unhandledRejection"); } catch { /* ignore */ }
     hardRestart(reason);
 });
 
@@ -281,6 +328,10 @@ function gracefulShutdown(signal: NodeJS.Signals): void {
         clearInterval(pingInterval);
         pingInterval = null;
     }
+    if (debugHeartbeat) {
+        clearInterval(debugHeartbeat);
+        debugHeartbeat = null;
+    }
     if (socket) {
         try {
             socket.removeAllListeners();
@@ -288,6 +339,7 @@ function gracefulShutdown(signal: NodeJS.Signals): void {
         } catch { /* ignore */ }
         socket = null;
     }
+    setSocket(null);
     if (restartTimer) {
         clearTimeout(restartTimer);
         restartTimer = null;
@@ -308,5 +360,6 @@ process.on("SIGHUP", () => {
 
 bootLoop().catch((err) => {
     console.error("🔥 Erro fatal no ciclo inicial do aplicativo:", err);
+    try { emitError(err, "bootLoop:fatal"); } catch { /* ignore */ }
     hardRestart(err);
 });
