@@ -5,7 +5,7 @@ import { promisify } from "util";
 import moment from "moment";
 import player from "node-wav-player";
 import { OrderData, Product, ProdVariant } from "./types.js";
-import { emitDebug, emitError } from "./socketHelper.js";
+import { emitError } from "./socketHelper.js";
 
 const execAsync = promisify(exec);
 
@@ -281,58 +281,76 @@ export async function printOrder(data: OrderData, socket?: any): Promise<boolean
 
         const printerName = process.env.PRINTER_NAME || "EPSON-PEDIDOS";
         console.log(`Sending to printer: ${printerName}...`);
-        emitDebug(`Enviando pedido #${num} para impressora`, { printerName, fileName, platform: process.platform });
 
         const isWin = process.platform === "win32";
-        const command = isWin
-            ? `cmd.exe /c copy /b "${filePath}" "\\\\127.0.0.1\\${printerName}"`
-            : `lp -d "${printerName}" "${filePath}" 2>&1 || (echo "[SIMULACAO LINUX] Impressora ${printerName} - arquivo ${fileName} — plataforma ${process.platform}"; echo "PRINT_SIMULATED_LINUX")`;
+        const isDev = process.env.NODE_ENV !== "production";
+        let command: string;
+        let simulated = false;
 
         try {
-            const { stdout, stderr } = await execAsync(command);
-            // Em Linux, lp pode não existir mas fallback echo garante stdout com PRINT_SIMULATED
-            const output = `${stdout || ""}${stderr || ""}`.trim();
-            console.log(`[PRINT] comando retorno: ${output || "(vazio)"}`);
-            // Se for simulação Linux, ainda considera sucesso para não quebrar teste, mas avisa via debug
-            if (!isWin && output.includes("PRINT_SIMULATED")) {
-                emitDebug(`Impressão simulada no Linux (sem impressora real)`, { printerName, fileName, orderNum: num, platform: process.platform, output: output.slice(0, 500) });
+            if (isWin) {
+                command = `cmd.exe /c copy /b "${filePath}" "\\\\127.0.0.1\\${printerName}"`;
+                await execAsync(command);
             } else {
-                emitDebug(`Comando de impressão executado`, { printerName, fileName, orderNum: num, platform: process.platform, output: output.slice(0, 500) });
+                // Linux/macOS: usa CUPS. NUNCA simula em produção.
+                if (isDev) {
+                    // Em dev, tenta lp e só simula se lp falhar (mitiga erro sem mascarar em prod)
+                    try {
+                        await execAsync(`lp -d "${printerName}" "${filePath}"`);
+                    } catch (lpErr: any) {
+                        const lpMsg = String(lpErr?.message || lpErr);
+                        // Apenas em dev: simula para não travar teste local sem impressora
+                        console.warn(`[PRINT] lp falhou em dev (simulando): ${lpMsg.slice(0, 200)}`);
+                        simulated = true;
+                        // Mitiga: não propaga erro em dev com simulação — considera sucesso mas avisa
+                        // Não envia debug ao Telegram (removido), apenas log local
+                    }
+                } else {
+                    // Produção: falha real deve subir como erro e ir para Telegram
+                    await execAsync(`lp -d "${printerName}" "${filePath}"`);
+                }
+            }
+            if (simulated) {
+                console.log(`[PRINT] [DEV SIMULACAO] Pedido #${num} simulado (Linux dev sem CUPS)`);
             }
         } catch (err: any) {
-            const isCmdNotFound = typeof err?.message === "string" && err.message.includes("cmd.exe");
-            const friendly = isCmdNotFound
-                ? `Falha na impressão — comando Windows não existe no Linux (plataforma: ${process.platform}). Use impressora CUPS (lp) ou rode em Windows. Erro original: ${err.message}`
-                : err;
-            console.error(`[PRINT ERROR] Falha ao enviar para impressora ${printerName} (platform=${process.platform}):`, err);
-            // Envia erro amigável com motivo claro para o Telegram
-            emitError(friendly, "printOrder:exec", { printerName, fileName, orderNum: num, platform: process.platform, isWin });
-            // Também tenta envio direto caso helper falhe por socket desconectado
+            // Mitiga qualquer erro: garante envio ao Telegram antes de propagar
             try {
-                const s = (socket as any);
-                if (s?.emit && !s?.connected) console.warn(`[PRINT ERROR] socket desconectado, tentativa de emit falhou — erro não chegará ao Telegram`);
-            } catch {}
+                const friendly = err?.message?.includes("cmd.exe")
+                    ? `Falha na impressão — comando Windows não existe nesta plataforma (${process.platform}). Configure impressora CUPS (lp) ou rode em Windows.`
+                    : err;
+                console.error(`[PRINT ERROR] Falha ao enviar para impressora ${printerName} (platform=${process.platform} dev=${isDev}):`, err);
+                emitError(friendly, "printOrder:exec", { printerName, fileName, orderNum: num, platform: process.platform, isDev, isWin, simulated });
+            } catch (mitErr) {
+                console.error("[PRINT ERROR] falha ao mitigar/enviar erro ao Telegram:", mitErr);
+            }
             throw err;
         } finally {
-            fs.unlink(filePath, () => { });
+            try { fs.unlinkSync(filePath); } catch {}
+            // garante unlink mesmo se unlink async falhar
+            fs.unlink(filePath, () => {});
         }
 
 
         const wavPath = path.join(appDir, "new-order.wav");
-        player.play({
-            path: wavPath,
-        }).catch((err: any) => {
-            console.log("Erro ao tocar áudio:", err.message);
-            emitError(err, "printOrder:audio", { orderNum: num });
-        });
+        // Mitiga erro de áudio: nunca quebra impressão
+        try {
+            await player.play({ path: wavPath }).catch((err: any) => {
+                try { emitError(err, "printOrder:audio", { orderNum: num, platform: process.platform }); } catch {}
+            });
+        } catch (audioErr: any) {
+            try { emitError(audioErr, "printOrder:audio", { orderNum: num, platform: process.platform }); } catch {}
+        }
 
-        console.log(`[PRINTED] Pedido #${num}`);
-        emitDebug(`Pedido #${num} impresso com sucesso`, { orderNum: num });
+        console.log(`[PRINTED] Pedido #${num}` + (simulated ? " [SIMULADO DEV]" : ""));
         return true;
 
     } catch (err) {
-        console.error("[PRINT ERROR]", err);
-        emitError(err, "printOrder:unexpected", { orderNum: (data as any)?.num });
+        // Mitiga qualquer erro do fluxo geral
+        try {
+            console.error("[PRINT ERROR]", err);
+            emitError(err, "printOrder:unexpected", { orderNum: (data as any)?.num, platform: process.platform });
+        } catch {}
         return false;
     }
 }

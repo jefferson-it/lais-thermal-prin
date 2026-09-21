@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import moment from "moment";
-import { emitDebug, emitError } from "./socketHelper.js";
+import { emitError } from "./socketHelper.js";
 
 const isPkg = (process as any).pkg !== undefined;
 const appDir = isPkg ? path.dirname(process.execPath) : process.cwd();
@@ -52,17 +52,13 @@ function writeLog(level: string, message: any, ...args: any[]) {
         originalConsole.error("Erro ao escrever no arquivo de log lais-thermal.log:", err);
     }
 
-    // Envio para o servidor via socket.io (não bloqueia e evita recursão)
+    // Envio para o servidor via socket.io — apenas ERRO (debugs removidos)
+    // Mitiga qualquer falha para não quebrar log local
     try {
         if (level === "ERROR") {
-            // Procura um Error nos args para extrair stack
             const errObj = [message, ...args].find((a) => a instanceof Error);
-            emitError(errObj || content, `logger:${level}`, { content, args: formatArgs(args) });
-        } else if (level === "WARN") {
-            emitDebug(`[WARN] ${content}`, { level, rawArgs: args });
+            try { emitError(errObj || content, `logger:${level}`, { content, args: formatArgs(args) }); } catch {}
         }
-        // INFO não envia automaticamente para não inundar o server;
-        // use emitDebug manualmente nos pontos relevantes (index.ts/printOrder.ts)
     } catch {
         // socket ainda não conectado — ignora silenciosamente
     }
